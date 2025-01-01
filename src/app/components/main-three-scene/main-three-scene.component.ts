@@ -2,6 +2,7 @@ import {AfterViewInit, Component, ElementRef, HostListener, ViewChild} from '@an
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader';
 import {OrbitControls} from "three/examples/jsm/controls/OrbitControls";
+import {RlServiceService} from '../../services/rl-service.service';
 
 interface CarControls {
   forward: boolean;
@@ -21,13 +22,32 @@ interface Obstacle {
 @Component({
   selector: 'app-main-three-scene',
   template: `
-    <canvas #threejs></canvas>`,
+    <div class="menu">
+      <button (click)="selectMode('car')">Drive Car</button>
+      <button (click)="selectMode('tieFighter')">Fly Tie Fighter</button>
+    </div>
+    <canvas #threejs></canvas>
+  `,
   standalone: true,
   styles: [`
     canvas {
       width: 100%;
       height: 100%;
       display: block;
+    }
+
+    .menu {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+    }
+
+    .menu button {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
     }
   `]
 })
@@ -61,11 +81,45 @@ export class MainThreeSceneComponent implements AfterViewInit {
     friction: 0.95
   };
 
+  private currentMode: 'car' | 'tieFighter' = 'car';
+  private tieFighter!: THREE.Group;
+  private tieFighterControls = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    rotateLeft: false,
+    rotateRight: false,
+    rotateUp: false,
+    rotateDown: false,
+    rollLeft: false,
+    rollRight: false
+  };
+
+
   private obstacles: Obstacle[] = [];
   private score: number = 0;
 
   private terrain!: THREE.Mesh;
   private track!: THREE.Mesh;
+
+  // Reinforcement Learning
+
+  private rlService: RlServiceService;
+  private observationSpaceSize = 4; // based on your observation space
+  private actionSpaceSize = 4; // based on your action space
+  private trainingIterations = 10; // Number of training iterations
+  private observations: number[][] = [];
+  private actions: number[] = [];
+  private rewards: number[] = [];
+  private isTraining = false;
+  private currentEpisode = 0;
+
+  constructor() {
+    this.rlService = new RlServiceService();
+  }
 
   ngAfterViewInit(): void {
     this.initScene();
@@ -73,6 +127,23 @@ export class MainThreeSceneComponent implements AfterViewInit {
     this.createRaceTrack();
     this.setupKeyboardControls();
     this.setupCameraControls();
+
+
+    //this.startGame();
+
+
+
+    setTimeout(() => {
+      this.isTraining = true;
+      this.trainRlModel();
+    }, 1000);
+
+
+
+
+
+
+
     this.animate();
   }
 
@@ -115,61 +186,145 @@ export class MainThreeSceneComponent implements AfterViewInit {
 
   private loadModels(): void {
     const loader = new GLTFLoader();
+
+    // Load the car model
     loader.load('models/CarAnimationWheels.glb', (gltf) => {
       this.car = gltf.scene;
       this.car.scale.set(0.5, 0.5, 0.5);
       this.car.position.set(0, 0, 0);
-
       this.scene.add(this.car);
-    }, undefined, (error) => {
-      console.error('An error occurred while loading the model:', error);
+    });
+
+    // Load the Tie Fighter model
+    loader.load('models/TieFighter.glb', (gltf) => {
+      this.tieFighter = gltf.scene;
+      this.tieFighter.scale.set(0.5, 0.5, 0.5);
+      this.tieFighter.position.set(5, 0, 0);
+      this.scene.add(this.tieFighter);
     });
   }
+
+  selectMode(mode: 'car' | 'tieFighter'): void {
+    this.currentMode = mode;
+    if (mode === 'car') {
+      this.cameraMode = 'follow';
+    } else if (mode === 'tieFighter') {
+      this.cameraMode = 'orbit'; // Or create a new mode for flight
+    }
+  }
+
 
   private setupKeyboardControls(): void {
     window.addEventListener('keydown', (event) => this.handleKeyDown(event));
     window.addEventListener('keyup', (event) => this.handleKeyUp(event));
   }
 
+
   private handleKeyDown(event: KeyboardEvent): void {
-    switch (event.code) {
-      case 'ArrowUp':
-      case 'KeyW':
-        this.carControls.forward = true;
-        break;
-      case 'ArrowDown':
-      case 'KeyS':
-        this.carControls.backward = true;
-        break;
-      case 'ArrowLeft':
-      case 'KeyA':
-        this.carControls.left = true;
-        break;
-      case 'ArrowRight':
-      case 'KeyD':
-        this.carControls.right = true;
-        break;
+    if (this.currentMode === 'car') {
+      switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          this.carControls.forward = true;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          this.carControls.backward = true;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          this.carControls.left = true;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          this.carControls.right = true;
+          break;
+      }
+    } else if (this.currentMode === 'tieFighter') {
+      switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          this.tieFighterControls.forward = true;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          this.tieFighterControls.backward = true;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          this.tieFighterControls.rotateLeft = true;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          this.tieFighterControls.rotateRight = true;
+          break;
+        case 'KeyQ':
+          this.tieFighterControls.rollLeft = true;
+          break;
+        case 'KeyE':
+          this.tieFighterControls.rollRight = true;
+          break;
+        case 'Space':
+          this.tieFighterControls.up = true;
+          break;
+        case 'ShiftLeft':
+          this.tieFighterControls.down = true;
+          break;
+      }
     }
   }
 
   private handleKeyUp(event: KeyboardEvent): void {
-    switch (event.code) {
-      case 'ArrowUp':
-      case 'KeyW':
-        this.carControls.forward = false;
-        break;
-      case 'ArrowDown':
-      case 'KeyS':
-        this.carControls.backward = false;
-        break;
-      case 'ArrowLeft':
-      case 'KeyA':
-        this.carControls.left = false;
-        break;
-      case 'ArrowRight':
-      case 'KeyD':
-        this.carControls.right = false;
-        break;
+    if (this.currentMode === 'car') {
+      switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          this.carControls.forward = false;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          this.carControls.backward = false;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          this.carControls.left = false;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          this.carControls.right = false;
+          break;
+      }
+    } else if (this.currentMode === 'tieFighter') {
+      switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          this.tieFighterControls.forward = false;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          this.tieFighterControls.backward = false;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          this.tieFighterControls.rotateLeft = false;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          this.tieFighterControls.rotateRight = false;
+          break;
+        case 'KeyQ':
+          this.tieFighterControls.rollLeft = false;
+          break;
+        case 'KeyE':
+          this.tieFighterControls.rollRight = false;
+          break;
+        case 'Space':
+          this.tieFighterControls.up = false;
+          break;
+        case 'ShiftLeft':
+          this.tieFighterControls.down = false;
+          break;
+      }
     }
   }
 
@@ -296,7 +451,7 @@ export class MainThreeSceneComponent implements AfterViewInit {
 
 
   private getRandomObstacleType(): 'cone' | 'barrier' | 'movingBox' {
-    const types: ('cone' | 'barrier' | 'movingBox')[] = ['cone', 'barrier', 'movingBox']; // Ensure the array is typed correctly
+    const types: ('cone' | 'barrier' | 'movingBox')[] = ['cone', 'barrier', 'movingBox'];
     return types[Math.floor(Math.random() * types.length)];
   }
 
@@ -333,6 +488,47 @@ export class MainThreeSceneComponent implements AfterViewInit {
         this.score -= 10; // Deduct points for collision
       }
     });
+  }
+
+  private updateMovement(): void {
+    if (this.currentMode === 'car') {
+      this.updateCarMovement();
+    } else if (this.currentMode === 'tieFighter') {
+      this.updateTieFighterMovement();
+    }
+  }
+
+
+  private updateTieFighterMovement(): void {
+    if (!this.tieFighter) return;
+
+    const direction = new THREE.Vector3();
+    const rotation = new THREE.Euler(0, 0, 0);
+
+    // Translate
+    if (this.tieFighterControls.forward) direction.z -= 0.1;
+    if (this.tieFighterControls.backward) direction.z += 0.1;
+    if (this.tieFighterControls.left) direction.x -= 0.1;
+    if (this.tieFighterControls.right) direction.x += 0.1;
+    if (this.tieFighterControls.up) direction.y += 0.1;
+    if (this.tieFighterControls.down) direction.y -= 0.1;
+
+    // Rotate
+    if (this.tieFighterControls.rotateLeft) rotation.y += 0.05;
+    if (this.tieFighterControls.rotateRight) rotation.y -= 0.05;
+    if (this.tieFighterControls.rotateUp) rotation.x += 0.05;
+    if (this.tieFighterControls.rotateDown) rotation.x -= 0.05;
+    if (this.tieFighterControls.rollLeft) rotation.z += 0.05;
+    if (this.tieFighterControls.rollRight) rotation.z -= 0.05;
+
+    // Apply translation
+    direction.applyEuler(this.tieFighter.rotation);
+    this.tieFighter.position.add(direction);
+
+    // Apply rotation
+    this.tieFighter.rotation.x += rotation.x;
+    this.tieFighter.rotation.y += rotation.y;
+    this.tieFighter.rotation.z += rotation.z;
   }
 
 
@@ -404,7 +600,7 @@ export class MainThreeSceneComponent implements AfterViewInit {
   private animate = (): void => {
     requestAnimationFrame(this.animate);
 
-    this.updateCarMovement();
+    this.updateMovement();
 
 
     this.updateObstacles();
@@ -412,6 +608,117 @@ export class MainThreeSceneComponent implements AfterViewInit {
 
     this.renderer.render(this.scene, this.camera);
   };
+
+
+  // RL Stuff *****************************************************************
+
+  private getObservation(): number[] {
+    if (!this.car) return []; // Return empty observation if car is not loaded
+    const carPosition = this.car.position;
+    const forwardDirection = new THREE.Vector3(0, 0, 1).applyQuaternion(this.car.quaternion);
+    const closestObstacle = this.findClosestObstacle(this.car.position, forwardDirection);
+    const obstacleDistance = closestObstacle ? closestObstacle.mesh.position.distanceTo(carPosition) : 100;
+    const obstacleAngle = closestObstacle ? forwardDirection.angleTo(closestObstacle.mesh.position.clone().sub(carPosition).normalize()) : 0;
+
+    return [
+      carPosition.x / this.trackDimensions.width, // Normalized X position
+      carPosition.z / this.trackDimensions.length, // Normalized Z position
+      obstacleDistance / this.trackDimensions.length, // Normalized distance to closest obstacle
+      obstacleAngle // Angle to the closest obstacle
+    ];
+  }
+
+  private findClosestObstacle(currentPosition: THREE.Vector3, direction: THREE.Vector3): Obstacle | null {
+    let closestObstacle: Obstacle | null = null;
+    let minDistance = Infinity;
+
+    this.obstacles.forEach(obstacle => {
+      const distance = obstacle.mesh.position.distanceTo(currentPosition);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestObstacle = obstacle;
+      }
+    });
+
+    return closestObstacle;
+  }
+
+  private chooseAction(observation: number[]): any {
+    if (this.isTraining) {
+      return this.rlService.predictAction(observation) as unknown as number;
+    } else {
+      // Use manual control
+      // ... ( existing logic for manual control)
+      console.log('Use now manual control')
+    }
+  }
+
+  private applyAction(action: number): void {
+    switch (action) {
+      case 0: // Forward
+        this.carControls.forward = true;
+        break;
+      case 1: // Backward
+        this.carControls.backward = true;
+        break;
+      case 2: // Left
+        this.carControls.left = true;
+        break;
+      case 3: // Right
+        this.carControls.right = true;
+        break;
+    }
+  }
+
+  private trainRlModel(): void {
+    // Train for a specified number of iterations
+    for (let i = 0; i < this.trainingIterations; i++) {
+      this.runEpisode();
+      this.currentEpisode++;
+      console.log('Episode:', this.currentEpisode, 'Score:', this.score);
+      this.rlService.trainModel(this.observations, this.actions, this.rewards);
+      this.resetEpisodeData();
+    }
+  }
+
+  private runEpisode(): void {
+    this.score = 0;
+
+    while (this.score < 100 && !this.carControls.backward) { // Continue until a certain score or condition is met
+      const observation = this.getObservation();
+      const action = this.chooseAction(observation);
+      this.applyAction(action);
+
+      // Simulate the environment for one step
+      this.updateMovement();
+      this.updateObstacles();
+      this.checkObstacleCollisions();
+
+      // Collect rewards based on the current state
+      const reward = this.calculateReward();
+      this.observations.push(observation);
+      this.actions.push(action);
+      this.rewards.push(reward);
+      this.score += reward; // Update score based on the reward
+    }
+  }
+
+  private calculateReward(): number {
+    // Define your reward logic here
+    // For example, reward for moving forward and penalize for collisions
+    if (this.carPhysics.speed > 0) {
+      return 1; // Reward for moving forward
+    } else if (this.carPhysics.speed < 0) {
+      return -1; // Penalty for moving backward
+    }
+    return 0; // Neutral reward
+  }
+
+  private resetEpisodeData(): void {
+    this.observations = [];
+    this.actions = [];
+    this.rewards = [];
+  }
 
 
   @HostListener('window:resize')
