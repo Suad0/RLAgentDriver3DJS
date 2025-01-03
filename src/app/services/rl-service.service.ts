@@ -1,78 +1,104 @@
 import {Injectable} from '@angular/core';
-import * as tf from '@tensorflow/tfjs'
+import * as tf from '@tensorflow/tfjs';
 
 @Injectable({
   providedIn: 'root'
 })
 export class RlServiceService {
-
-  private model: tf.Sequential;
-  private learningRate = 0.01
+  private model!: tf.Sequential | tf.LayersModel | any;
+  private learningRate = 0.01;
+  private gamma = 0.99;
 
   constructor() {
-    this.model = this.createModel();
+    this.initializeModel();
   }
 
-  private createModel(): tf.Sequential {
+  // Initialize a simple Neural Network for Q-learning
+  private initializeModel(): void {
+    this.model = tf.sequential();
 
-    const model: tf.Sequential = tf.sequential();
+    this.model.add(tf.layers.dense({units: 24, inputShape: [4], activation: 'relu'}));
+    this.model.add(tf.layers.dense({units: 24, activation: 'relu'}));
+    this.model.add(tf.layers.dense({units: 2, activation: 'linear'})); // 2 actions: left or right
 
-    model.add(tf.layers.dense({inputShape: [4], units: 24, activation: 'relu'})); // Observation space size
-    model.add(tf.layers.dense({units: 24, activation: 'relu'}));
-    model.add(tf.layers.dense({units: 4, activation: 'softmax'})); // Action space size
-
-    model.compile({
+    this.model.compile({
       optimizer: tf.train.adam(this.learningRate),
       loss: 'meanSquaredError'
     });
 
-    return model;
+    console.log('Model initialized');
   }
 
-  async predictAction(observation: number[]): Promise<number> {
-
-    console.log('predict action is called with' + observation);
-
-    const inputTensor: tf.Tensor2D = tf.tensor2d([observation]);
-    const prediction: tf.Tensor<tf.Rank> = this.model.predict(inputTensor) as tf.Tensor;
-    const action: number = (await prediction.argMax(1).data())[0];
-    inputTensor.dispose();
+  // Predict action based on the current state
+  public async predictAction(state: number[]): Promise<number> {
+    const stateTensor = tf.tensor2d([state]);
+    const prediction: any = this.model.predict(stateTensor) as tf.Tensor;
+    const action = (await prediction.array())[0];
     prediction.dispose();
-    return action;
+    stateTensor.dispose();
+
+    // Return index of the max value as the action
+    return action.indexOf(Math.max(...action));
   }
 
-  async trainModel(observations: number[][], actions: number[], rewards: number[]): Promise<void> {
+  // Train the model using a single experience tuple
+  public async trainModel(state: number[], action: number, reward: number, nextState: number[], done: boolean): Promise<void> {
+    let target = reward;
+    const nextStateTensor = tf.tensor2d([nextState]);
+    const stateTensor = tf.tensor2d([state]);
 
-    console.log('train modeal is called')
-    console.log(observations)
-    console.log(actions)
-    console.log(rewards)
+    if (!done) {
+      const nextPrediction: any = this.model.predict(nextStateTensor) as tf.Tensor;
+      const nextMax = Math.max(...(await nextPrediction.array())[0]);
+      nextPrediction.dispose();
+      target += this.gamma * nextMax;
+    }
 
+    const targetTensor = tf.tensor2d([target]);
+    const actionTensor = tf.tensor1d([action]);
 
+    const outputs = this.model.predict(stateTensor) as tf.Tensor;
+    const outputsArray: any = await outputs.array();
+    outputsArray[0][action] = target; // Update Q-value for the action
 
-    const observationTensor: tf.Tensor2D = tf.tensor2d(observations);
-    const actionTensor: tf.Tensor1D = tf.tensor1d(actions, 'int32');
-    const rewardTensor: tf.Tensor1D = tf.tensor1d(rewards);
+    // @ts-ignore
+    const labels = tf.tensor2d(outputsArray);
 
-    const oneHotActions: tf.Tensor<tf.Rank> = tf.oneHot(actionTensor, 4);
-    const scaledRewards: tf.Tensor<tf.Rank> = tf.scalar(1).add(rewardTensor);
+    // Train the model
+    await this.model.fit(stateTensor, labels, {epochs: 1, verbose: 0});
 
-    const xs: tf.Tensor2D = observationTensor;
-    const ys: tf.Tensor<tf.Rank> = oneHotActions.mul(scaledRewards.expandDims(1));
-
-    await this.model.fit(xs, ys, {
-      epochs: 10,
-      shuffle: true
-    });
-
-    observationTensor.dispose();
+    // Dispose tensors
+    nextStateTensor.dispose();
+    stateTensor.dispose();
+    targetTensor.dispose();
     actionTensor.dispose();
-    rewardTensor.dispose();
-    oneHotActions.dispose();
-    scaledRewards.dispose();
-    xs.dispose();
-    ys.dispose();
+    labels.dispose();
+    outputs.dispose();
   }
 
+  // Reset or start a new episode
+  public resetEnvironment(): number[] {
+    // Return the initial state of the environment
+    return [0, 0, 0, 0]; // Replace with actual state initialization
+  }
 
+  // Generate rewards based on actions and outcomes
+  public getReward(state: number[], action: number): number {
+    // Define the reward function based on the environment
+    // Positive reward for avoiding obstacles, negative for collisions
+    const reward = Math.random() > 0.5 ? 1 : -1; // Placeholder logic
+    return reward;
+  }
+
+  // Save the trained model
+  public async saveModel(): Promise<void> {
+    await this.model.save('localstorage://my-reinforcement-learning-model');
+    console.log('Model saved');
+  }
+
+  // Load a pre-trained model
+  public async loadModel(): Promise<void> {
+    this.model = await tf.loadLayersModel('localstorage://my-reinforcement-learning-model');
+    console.log('Model loaded');
+  }
 }

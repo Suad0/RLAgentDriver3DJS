@@ -1,0 +1,7 @@
+<div class="scene-controls">
+  <button (click)="toggleAutonomousMode()">
+    {{ isAutonomousMode ? 'Manual Control' : 'Autonomous Mode' }}
+  </button>
+  <button (click)="resetScene()">Reset Scene</button>
+</div>
+<canvas #threejs></canvas>
