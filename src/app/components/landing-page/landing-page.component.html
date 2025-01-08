@@ -1,0 +1,15 @@
+<div class="landing-page">
+  <h1>Welcome to the Driving Simulator</h1>
+  <p>Choose how you want to play:</p>
+
+  <div class="options">
+    <button class="btn manual" (click)="onManualDrive()">Drive on Your Own</button>
+    <button class="btn rl" (click)="onRLDrive()">Let RL Algorithm Drive</button>
+  </div>
+
+  <div class="preview">
+    <app-main-three-scene *ngIf="false"></app-main-three-scene>
+    <app-rl-dashboard *ngIf="false"></app-rl-dashboard>
+    <app-rl-main-scene *ngIf="false"></app-rl-main-scene>
+  </div>
+</div>

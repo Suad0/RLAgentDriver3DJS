@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader';
 import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls';
 import {RLQLearningService, CarState, Experience} from '../../services/rlqlearning.service';
+import {RLDashboardComponent} from '../rl-dashboard/rl-dashboard.component';
 
 interface Obstacle {
   mesh: THREE.Mesh;
@@ -13,7 +14,9 @@ interface Obstacle {
 
 @Component({
   selector: 'app-rl-main-scene',
-  imports: [],
+  imports: [
+    RLDashboardComponent
+  ],
   templateUrl: './rl-main-scene.component.html',
   standalone: true,
   styleUrl: './rl-main-scene.component.css'

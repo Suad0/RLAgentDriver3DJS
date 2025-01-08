@@ -1,0 +1,55 @@
+.landing-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg, #4c6ef5, #22c1c3);
+  height: 100vh;
+  color: white;
+}
+
+.landing-page h1 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.landing-page p {
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+}
+
+.options {
+  display: flex;
+  gap: 20px;
+}
+
+.btn {
+  padding: 15px 30px;
+  font-size: 1.2rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.btn.manual {
+  background-color: #ff6b6b;
+  color: white;
+}
+
+.btn.rl {
+  background-color: #1dd1a1;
+  color: white;
+}
+
+.btn:hover {
+  transform: scale(1.1);
+  opacity: 0.9;
+}
+
+.preview {
+  margin-top: 3rem;
+  display: none;
+}

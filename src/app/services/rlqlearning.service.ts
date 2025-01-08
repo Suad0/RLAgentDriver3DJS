@@ -55,7 +55,7 @@ export class RLQLearningService {
 
   constructor() {
     this.config = {
-      learningRate: 0.001,
+      learningRate: 0.1,
       discountFactor: 0.99,
       explorationRate: 0.1
     };
@@ -142,6 +142,7 @@ export class RLQLearningService {
 
   // Model Training
   async trainModel(): Promise<TrainingMetrics | null> {
+    console.log('train model called')
     // Ensure sufficient experiences
     if (this.replayBuffer.length < this.BATCH_SIZE) return null;
 

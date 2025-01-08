@@ -130,6 +130,7 @@ import {CommonModule} from '@angular/common';
   `]
 })
 export class RLDashboardComponent implements OnInit, OnDestroy {
+
   latestMetrics: TrainingMetrics | null = null;
   trainingLogs: string[] = [];
   trainingReport: string = '';
